@@ -68,16 +68,11 @@ canvas { display: block; cursor: none; }
 
 #winScreen {
   background: linear-gradient(180deg, #1a1a4e 0%, #2d2d7a 50%, #4a3f7c 100%);
-  color: #ffd700; display: none;
+  color: #ffd700; display: none; position: relative;
 }
-#winScreen h1 {
-  font-size: clamp(1.5em, 6vw, 3em);
-  text-shadow: 0 0 30px #ffd700; animation: pulseTitle 1s infinite alternate;
-}
-#winScreen .subtitle {
-  font-size: clamp(1em, 3.5vw, 1.5em); color: #fff; margin: 10px 0 20px;
-}
-@keyframes pulseTitle { from { transform: scale(1); } to { transform: scale(1.08); } }
+#winScreen h1 { display: none; }
+#winScreen .subtitle { display: none; }
+/* pulseTitle no longer needed — title is canvas-drawn */
 
 #hud {
   position: absolute; top: 0; left: 0; width: 100%;
@@ -91,7 +86,7 @@ canvas { display: block; cursor: none; }
 }
 #hud .hud-left, #hud .hud-right { display: flex; gap: 10px; }
 
-#winCanvas { position: absolute; top: 0; left: 0; z-index: 9; pointer-events: none; }
+#winCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; }
 
 /* Safe area insets for notched phones */
 @supports (padding: env(safe-area-inset-top)) {
@@ -119,10 +114,8 @@ canvas { display: block; cursor: none; }
 </div>
 
 <div id="winScreen">
-  <h1>🎂 Happy Birthday Ania! 🎂</h1>
-  <p class="subtitle">You saved the deer! 🦌🎉</p>
   <canvas id="winCanvas"></canvas>
-  <button class="restart-btn" id="winRestartBtn" style="z-index:11;position:relative;">🔄 Play Again</button>
+  <button class="restart-btn" id="winRestartBtn" style="z-index:11;position:absolute;bottom:max(24px, env(safe-area-inset-bottom, 24px));left:50%;transform:translateX(-50%);">🔄 Play Again</button>
 </div>
 
 <div id="hud" style="display:none;">

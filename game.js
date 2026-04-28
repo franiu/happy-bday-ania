@@ -772,14 +772,30 @@ function startWinAnimation() {
   wctx.setTransform(wcDPR, 0, 0, wcDPR, 0, 0);
 
   const gs = Math.max(0.5, Math.min(1.3, wcW / 1024));
+
+  // ---- Compute vertical layout so nothing overlaps ----
+  // Reserve bottom 60px for the Play Again button
+  const usableH = wcH - 60;
+  // Proportional vertical slots (top to bottom):
+  //   portrait center: 22% of usable
+  //   title baseline:  42%
+  //   subtitle:        48%
+  //   cake center:     62%
+  //   deer baseline:   84%
+  const portraitY = usableH * 0.20;
+  const titleY    = usableH * 0.41;
+  const subtitleY = usableH * 0.47;
+  const cakeY     = usableH * 0.62;
+  const deerY     = usableH * 0.84;
+
   const dancingDeer = [];
   const deerCount = wcW < 400 ? 4 : 6;
   for (let i = 0; i < deerCount; i++) {
     dancingDeer.push({
       x: wcW * (0.1 + 0.8 * i / (deerCount - 1)),
-      baseY: wcH * 0.78,
+      baseY: deerY,
       phase: (i / deerCount) * Math.PI * 2,
-      size: (0.8 + Math.random() * 0.3) * gs
+      size: (0.7 + Math.random() * 0.25) * gs
     });
   }
 
@@ -887,10 +903,10 @@ function startWinAnimation() {
     }
 
     // ===== ANIA PORTRAIT (centerpiece) =====
-    const aniaSize = Math.round(Math.min(wcW * 0.28, wcH * 0.22, 180) * gs);
+    const aniaSize = Math.round(Math.min(wcW * 0.26, usableH * 0.28, 160) * gs);
     const aniaCenterX = wcW / 2;
-    const aniaCenterY = wcH * 0.34;
-    const aniaFloat = Math.sin(time / 800) * 8;
+    const aniaCenterY = portraitY;
+    const aniaFloat = Math.sin(time / 800) * 6;
     const aniaGlowPulse = 0.5 + 0.5 * Math.sin(time / 400);
 
     // Outer glow rings
@@ -1014,12 +1030,37 @@ function startWinAnimation() {
     wctx.arc(hatTipX, hatTipY, 3.5 * hatScale, 0, Math.PI * 2);
     wctx.fill();
 
-    // Birthday cake (below Ania, between her and the deer)
-    const cakeX = wcW / 2;
-    const cakeY = wcH * 0.58;
-    const cakeScale = 1.3 * gs;
+    // ===== TITLE TEXT (drawn on canvas) =====
+    const titlePulse = 1 + 0.04 * Math.sin(time / 500);
     wctx.save();
-    wctx.translate(cakeX, cakeY);
+    wctx.translate(wcW / 2, titleY);
+    wctx.scale(titlePulse, titlePulse);
+    wctx.font = `bold ${Math.round(Math.min(wcW * 0.055, 42) * gs)}px 'Segoe UI', Arial, sans-serif`;
+    wctx.textAlign = 'center';
+    wctx.textBaseline = 'middle';
+    // Text glow
+    wctx.shadowColor = '#ffd700';
+    wctx.shadowBlur = 20;
+    wctx.fillStyle = '#ffd700';
+    wctx.fillText('🎂 Happy Birthday Ania! 🎂', 0, 0);
+    wctx.shadowBlur = 0;
+    wctx.restore();
+
+    // Subtitle
+    wctx.save();
+    wctx.font = `${Math.round(Math.min(wcW * 0.032, 22) * gs)}px 'Segoe UI', Arial, sans-serif`;
+    wctx.textAlign = 'center';
+    wctx.textBaseline = 'middle';
+    wctx.fillStyle = '#fff';
+    wctx.fillText('You saved the deer! 🦌🎉', wcW / 2, subtitleY);
+    wctx.restore();
+
+    // Birthday cake (below title, above deer)
+    const cakeX = wcW / 2;
+    const cakeCenterY = cakeY;
+    const cakeScale = 1.2 * gs;
+    wctx.save();
+    wctx.translate(cakeX, cakeCenterY);
 
     // Cake plate
     wctx.fillStyle = '#ddd';
