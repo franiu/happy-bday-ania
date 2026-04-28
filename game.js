@@ -59,44 +59,51 @@ resize();
 
 // ============ DRAWING HELPERS ============
 function drawForestBackground() {
+  // Adapt horizon to aspect ratio: tall screens get less sky
+  const isPortrait = H > W;
+  const horizon = isPortrait ? 0.35 : 0.6;
+  const treeRowBack = horizon - 0.18;
+  const treeRowMid = horizon - 0.10;
+
   // Sky gradient
   const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
   skyGrad.addColorStop(0, '#87CEEB');
-  skyGrad.addColorStop(0.3, '#a8d8ea');
-  skyGrad.addColorStop(0.5, '#6db36d');
+  skyGrad.addColorStop(Math.max(0.15, horizon - 0.25), '#a8d8ea');
+  skyGrad.addColorStop(horizon, '#6db36d');
   skyGrad.addColorStop(1, '#3a7d2c');
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // Sun
+  // Sun (smaller on portrait)
+  const sunR = isPortrait ? 28 : 40;
   ctx.beginPath();
-  ctx.arc(W * 0.85, H * 0.12, 40, 0, Math.PI * 2);
+  ctx.arc(W * 0.85, H * 0.08, sunR, 0, Math.PI * 2);
   ctx.fillStyle = '#FFD700';
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(W * 0.85, H * 0.12, 55, 0, Math.PI * 2);
+  ctx.arc(W * 0.85, H * 0.08, sunR * 1.4, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(255,215,0,0.15)';
   ctx.fill();
 
   // Background trees
   for (let i = 0; i < 12; i++) {
-    drawTree(W * (i / 12) + 30, H * 0.42, 0.6 + Math.sin(i) * 0.15, '#2d5a27');
+    drawTree(W * (i / 12) + 30, H * treeRowBack, 0.6 + Math.sin(i) * 0.15, '#2d5a27');
   }
   // Midground trees
   for (let i = 0; i < 8; i++) {
-    drawTree(W * (i / 8) + 60, H * 0.50, 0.9 + Math.cos(i * 2) * 0.2, '#3a7d2c');
+    drawTree(W * (i / 8) + 60, H * treeRowMid, 0.9 + Math.cos(i * 2) * 0.2, '#3a7d2c');
   }
 
   // Ground
   ctx.fillStyle = '#4a7c3f';
-  ctx.fillRect(0, H * 0.6, W, H * 0.4);
+  ctx.fillRect(0, H * horizon, W, H * (1 - horizon));
 
   // Grass tufts
   ctx.strokeStyle = '#5a9c4f';
   ctx.lineWidth = 2;
   for (let i = 0; i < 60; i++) {
     const gx = (i / 60) * W + Math.sin(i * 7) * 20;
-    const gy = H * 0.62 + Math.abs(Math.sin(i * 3)) * (H * 0.35);
+    const gy = H * (horizon + 0.02) + Math.abs(Math.sin(i * 3)) * (H * (0.95 - horizon));
     ctx.beginPath();
     ctx.moveTo(gx, gy);
     ctx.lineTo(gx - 4, gy - 12);
@@ -109,7 +116,7 @@ function drawForestBackground() {
   const flowerColors = ['#ff6b9d', '#ffd93d', '#fff', '#c9b1ff'];
   for (let i = 0; i < 25; i++) {
     const fx = (i / 25) * W + Math.sin(i * 5) * 30;
-    const fy = H * 0.65 + Math.abs(Math.cos(i * 4)) * (H * 0.30);
+    const fy = H * (horizon + 0.05) + Math.abs(Math.cos(i * 4)) * (H * (0.90 - horizon));
     ctx.beginPath();
     ctx.arc(fx, fy, 3, 0, Math.PI * 2);
     ctx.fillStyle = flowerColors[i % flowerColors.length];
@@ -141,12 +148,17 @@ function drawTree(x, y, scale, color) {
 function createDeer() {
   deer = [];
   const gs = getGameScale();
-  const count = W < 500 ? 3 : DEER_COUNT; // fewer deer on tiny screens
-  const groundTop = H * 0.62;
-  const groundBottom = H * 0.88;
+  const isPortrait = H > W;
+  const count = W < 500 ? 3 : DEER_COUNT;
+  const horizon = isPortrait ? 0.35 : 0.6;
+  // Deer graze from just below the treeline to near the bottom
+  const groundTop = H * (horizon + 0.05);
+  const groundBottom = H * 0.92;
+  // Pull deer inward so side deer aren't at the very edge
+  const marginX = isPortrait ? 0.18 : 0.15;
   for (let i = 0; i < count; i++) {
     deer.push({
-      x: W * 0.12 + (W * 0.76) * (i / (count - 1)) + (Math.random() - 0.5) * 30 * gs,
+      x: W * marginX + (W * (1 - 2 * marginX)) * (i / (count - 1)) + (Math.random() - 0.5) * 20 * gs,
       y: groundTop + Math.random() * (groundBottom - groundTop),
       ticksOnMe: 0,
       alive: true,
