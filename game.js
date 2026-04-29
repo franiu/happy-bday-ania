@@ -1,5 +1,5 @@
 // ============ GAME CONFIG ============
-const WIN_SCORE = 50;
+const WIN_SCORE = 500;
 const TICK_POINTS = 10;
 const MAX_TICKS_ON_DEER = 3;
 const MAX_DEAD_DEER = 3;
