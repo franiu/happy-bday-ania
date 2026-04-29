@@ -1,5 +1,5 @@
 // ============ GAME CONFIG ============
-const WIN_SCORE = 500;
+const WIN_SCORE = 50;
 const TICK_POINTS = 10;
 const MAX_TICKS_ON_DEER = 3;
 const MAX_DEAD_DEER = 3;
@@ -41,6 +41,178 @@ function getGameScale() {
   const baseWidth = 1024;
   const s = Math.max(0.55, Math.min(1.4, W / baseWidth));
   return s;
+}
+
+// ============ AUDIO (procedural via Web Audio API) ============
+let audioCtx = null;
+let audioUnlocked = false;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// Unlock audio on first user interaction (required on mobile)
+function unlockAudio() {
+  if (audioUnlocked) return;
+  ensureAudio();
+  // Play a silent buffer to unlock
+  const buf = audioCtx.createBuffer(1, 1, 22050);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start(0);
+  audioUnlocked = true;
+}
+
+function playSwatHit() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Short punchy noise burst + pitch drop
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(800, t);
+  osc.frequency.exponentialRampToValueAtTime(150, t + 0.1);
+  gain.gain.setValueAtTime(0.25, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.12);
+
+  // Add a noise pop
+  const bufSize = audioCtx.sampleRate * 0.05;
+  const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+  const noiseSrc = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  noiseSrc.buffer = noiseBuf;
+  noiseGain.gain.setValueAtTime(0.2, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  noiseSrc.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noiseSrc.start(t);
+}
+
+function playSwatMiss() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Quick whoosh
+  const bufSize = audioCtx.sampleRate * 0.08;
+  const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) {
+    const env = Math.sin((i / bufSize) * Math.PI);
+    data[i] = (Math.random() * 2 - 1) * env * 0.5;
+  }
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(2000, t);
+  filter.frequency.exponentialRampToValueAtTime(500, t + 0.08);
+  filter.Q.value = 1;
+  src.buffer = noiseBuf;
+  gain.gain.setValueAtTime(0.12, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playTickBite() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Unpleasant squelch
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(200, t);
+  osc.frequency.exponentialRampToValueAtTime(80, t + 0.2);
+  gain.gain.setValueAtTime(0.15, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.25);
+}
+
+function playDeerDeath() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Sad descending tone
+  [0, 0.15, 0.3].forEach((offset, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime([440, 350, 260][i], t + offset);
+    gain.gain.setValueAtTime(0.18, t + offset);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + offset + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t + offset);
+    osc.stop(t + offset + 0.2);
+  });
+}
+
+function playGameOver() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Dramatic low descending tones
+  const notes = [300, 250, 200, 130];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, t + i * 0.25);
+    gain.gain.setValueAtTime(0.15, t + i * 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.25 + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t + i * 0.25);
+    osc.stop(t + i * 0.25 + 0.3);
+  });
+}
+
+function playWinJingle() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Happy ascending melody
+  const notes = [523, 587, 659, 698, 784, 880, 988, 1047];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    const start = t + i * 0.12;
+    osc.frequency.setValueAtTime(freq, start);
+    gain.gain.setValueAtTime(0.18, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.2);
+  });
+  // Final chord
+  const chordTime = t + notes.length * 0.12;
+  [523, 659, 784, 1047].forEach(freq => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, chordTime);
+    gain.gain.setValueAtTime(0.12, chordTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, chordTime + 0.8);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(chordTime);
+    osc.stop(chordTime + 0.8);
+  });
 }
 
 // ============ RESIZE ============
@@ -395,10 +567,12 @@ function updateTicks(dt) {
     if (dist < 20) {
       // Tick reached deer!
       t.targetDeer.ticksOnMe++;
+      playTickBite();
       if (t.targetDeer.ticksOnMe >= MAX_TICKS_ON_DEER) {
         t.targetDeer.alive = false;
         deadDeerCount++;
         document.getElementById('deerLost').textContent = deadDeerCount;
+        playDeerDeath();
         // Spawn sad particles
         for (let p = 0; p < 15; p++) {
           particles.push({
@@ -513,6 +687,7 @@ function handleSwat(px, py) {
       // Swatted!
       t.alive = false;
       score += TICK_POINTS;
+      playSwatHit();
       document.getElementById('scoreDisplay').textContent = score;
 
       // Splat particles
@@ -533,6 +708,7 @@ function handleSwat(px, py) {
     }
   }
   // Miss effect
+  playSwatMiss();
   swatEffects.push({ x: px, y: py, life: 10, maxLife: 10 });
 }
 
@@ -734,6 +910,7 @@ function startSpawning() {
 
 // ============ START / END ============
 function startGame() {
+  unlockAudio();
   score = 0;
   deadDeerCount = 0;
   ticks = [];
@@ -760,10 +937,12 @@ function endGame(won) {
   if (spawnTimer) clearTimeout(spawnTimer);
 
   if (won) {
+    playWinJingle();
     document.getElementById('winScreen').style.display = 'flex';
     document.getElementById('hud').style.display = 'none';
     startWinAnimation();
   } else {
+    playGameOver();
     document.getElementById('finalScore').textContent = score;
     document.getElementById('gameOverScreen').style.display = 'flex';
     document.getElementById('hud').style.display = 'none';
