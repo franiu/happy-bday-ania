@@ -675,7 +675,7 @@ function drawTick(t, time) {
 
 // ============ SWAT / INPUT ============
 function handleSwat(px, py) {
-  if (!gameRunning) return;
+  if (!gameRunning || winTransitionActive) return;
   // Bigger hit area on mobile for fat fingers
   const hitBonus = isMobile ? 25 : 12;
   for (let i = ticks.length - 1; i >= 0; i--) {
@@ -702,7 +702,7 @@ function handleSwat(px, py) {
 
       // Check win
       if (score >= WIN_SCORE) {
-        endGame(true);
+        startWinTransition();
       }
       return; // Only swat one tick per tap
     }
@@ -929,6 +929,224 @@ function startGame() {
   lastTime = 0;
   animFrameId = requestAnimationFrame(gameLoop);
   startSpawning();
+}
+
+// ============ WIN TRANSITION (purification aura) ============
+let winTransitionActive = false;
+let winTransitionStart = 0;
+const WIN_TRANSITION_DURATION = 2800; // ms
+
+function startWinTransition() {
+  // Stop spawning and disable further input
+  if (spawnTimer) clearTimeout(spawnTimer);
+  winTransitionActive = true;
+  winTransitionStart = performance.now();
+  gameRunning = false; // stops normal game loop
+
+  // Play a power-up sound: ascending shimmer
+  playPurificationSound();
+
+  // Run the transition animation loop
+  requestAnimationFrame(winTransitionLoop);
+}
+
+function playPurificationSound() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Shimmering ascending tones
+  const notes = [392, 440, 523, 587, 659, 784, 880, 1047, 1175, 1319];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    const start = t + i * 0.1;
+    osc.frequency.setValueAtTime(freq, start);
+    gain.gain.setValueAtTime(0.12, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.35);
+  });
+  // Sustained warm chord at the end
+  const chordStart = t + notes.length * 0.1;
+  [523, 659, 784, 1047].forEach(freq => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, chordStart);
+    gain.gain.setValueAtTime(0.1, chordStart);
+    gain.gain.linearRampToValueAtTime(0.08, chordStart + 1.0);
+    gain.gain.exponentialRampToValueAtTime(0.001, chordStart + 1.8);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(chordStart);
+    osc.stop(chordStart + 1.8);
+  });
+}
+
+function winTransitionLoop(timestamp) {
+  const elapsed = timestamp - winTransitionStart;
+  const progress = Math.min(elapsed / WIN_TRANSITION_DURATION, 1);
+
+  ctx.clearRect(0, 0, W, H);
+  drawForestBackground();
+
+  const gs = getGameScale();
+  const centerX = W / 2;
+  const centerY = H * 0.45;
+
+  // Aura radius expands to cover the whole screen
+  const maxRadius = Math.sqrt(W * W + H * H);
+  const auraRadius = progress * maxRadius;
+
+  // Phase 1 (0-30%): Ania moves to center and grows
+  // Phase 2 (15-90%): Aura expands, kills ticks, heals deer
+  // Phase 3 (80-100%): Flash and fade to white
+
+  // --- Kill ticks caught by the aura ---
+  for (let i = ticks.length - 1; i >= 0; i--) {
+    const t = ticks[i];
+    if (!t.alive) continue;
+    const dx = t.x - centerX;
+    const dy = t.y - centerY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < auraRadius) {
+      t.alive = false;
+      // Golden vaporize particles
+      for (let p = 0; p < 8; p++) {
+        particles.push({
+          x: t.x, y: t.y,
+          vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5,
+          life: 40, maxLife: 40, color: '#ffd700', text: null
+        });
+      }
+      particles.push({
+        x: t.x, y: t.y - 10,
+        vx: 0, vy: -1.5,
+        life: 50, maxLife: 50, color: '#ffd700', text: '✨'
+      });
+    }
+  }
+  // Remove dead ticks
+  ticks = ticks.filter(t => t.alive);
+
+  // --- Heal deer caught by the aura ---
+  for (const d of deer) {
+    if (!d.alive || d.ticksOnMe === 0) continue;
+    const dx = d.x - centerX;
+    const dy = d.y - centerY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < auraRadius && d.ticksOnMe > 0) {
+      d.ticksOnMe = 0;
+      // Green healing sparkles
+      for (let p = 0; p < 10; p++) {
+        particles.push({
+          x: d.x + (Math.random() - 0.5) * 30, y: d.y - 20 + (Math.random() - 0.5) * 20,
+          vx: (Math.random() - 0.5) * 2, vy: -Math.random() * 2 - 1,
+          life: 45, maxLife: 45, color: '#4ade80', text: null
+        });
+      }
+      particles.push({
+        x: d.x, y: d.y - 40,
+        vx: 0, vy: -1,
+        life: 55, maxLife: 55, color: '#4ade80', text: '💚'
+      });
+    }
+  }
+
+  // --- Draw deer ---
+  for (const d of deer) {
+    drawDeer(d, timestamp);
+  }
+
+  // --- Draw remaining ticks ---
+  for (const t of ticks) {
+    drawTick(t, timestamp);
+  }
+
+  // --- Update & draw particles ---
+  updateParticles();
+  drawParticles();
+
+  // --- Draw the expanding golden aura ---
+  if (progress < 0.9) {
+    const auraAlpha = 0.25 * (1 - progress);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, auraRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 215, 0, ${auraAlpha + 0.2})`;
+    ctx.lineWidth = 6 * gs;
+    ctx.stroke();
+    // Inner glow fill
+    const grad = ctx.createRadialGradient(centerX, centerY, auraRadius * 0.7, centerX, centerY, auraRadius);
+    grad.addColorStop(0, `rgba(255, 215, 0, 0)`);
+    grad.addColorStop(1, `rgba(255, 215, 0, ${auraAlpha})`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // --- Draw Ania at center, growing ---
+  const aniaProgress = Math.min(progress / 0.3, 1); // fully grown by 30%
+  const aniaScale = 1 + aniaProgress * 2.5; // grows to 3.5x
+  const aniaSize = Math.round(50 * gs * aniaScale);
+  const aniaAlpha = progress < 0.85 ? 1 : Math.max(0, 1 - (progress - 0.85) / 0.15);
+
+  // Ania moves from last cursor position to center
+  const aniaX = mouseX + (centerX - mouseX) * Math.min(aniaProgress * 1.5, 1);
+  const aniaY = (mouseY - 30 * gs) + (centerY - (mouseY - 30 * gs)) * Math.min(aniaProgress * 1.5, 1);
+
+  ctx.save();
+  ctx.globalAlpha = aniaAlpha;
+
+  // Golden glow behind Ania
+  const glowRadius = aniaSize * 0.8 + Math.sin(timestamp / 200) * 5;
+  const glowGrad = ctx.createRadialGradient(aniaX, aniaY, aniaSize * 0.3, aniaX, aniaY, glowRadius);
+  glowGrad.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+  glowGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(aniaX, aniaY, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ania portrait
+  if (aniaImg.complete && aniaImg.naturalWidth > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(aniaX, aniaY, aniaSize / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    const imgAspect = aniaImg.naturalWidth / aniaImg.naturalHeight;
+    let drawW, drawH;
+    if (imgAspect > 1) { drawH = aniaSize; drawW = aniaSize * imgAspect; }
+    else { drawW = aniaSize; drawH = aniaSize / imgAspect; }
+    ctx.drawImage(aniaImg, aniaX - drawW / 2, aniaY - drawH / 2, drawW, drawH);
+    ctx.restore();
+
+    // Golden border
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 3 * gs * aniaScale;
+    ctx.beginPath();
+    ctx.arc(aniaX, aniaY, aniaSize / 2 + 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // --- White flash at the end ---
+  if (progress > 0.85) {
+    const flashAlpha = (progress - 0.85) / 0.15;
+    ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // --- Continue or finish ---
+  if (progress < 1) {
+    requestAnimationFrame(winTransitionLoop);
+  } else {
+    winTransitionActive = false;
+    endGame(true);
+  }
 }
 
 function endGame(won) {
@@ -1239,11 +1457,11 @@ function startWinAnimation() {
 
     // Subtitle
     wctx.save();
-    wctx.font = `${Math.round(Math.min(wcW * 0.032, 22) * gs)}px 'Segoe UI', Arial, sans-serif`;
+    wctx.font = `bold ${Math.round(Math.min(wcW * 0.04, 28) * gs)}px 'Segoe UI', Arial, sans-serif`;
     wctx.textAlign = 'center';
     wctx.textBaseline = 'middle';
     wctx.fillStyle = '#fff';
-    wctx.fillText('You saved the deer! 🦌🎉', wcW / 2, subtitleY);
+    wctx.fillText('Congratulations! You saved the deer! 🦌🎉', wcW / 2, subtitleY);
     wctx.restore();
 
     // Birthday cake (below title, above deer)
