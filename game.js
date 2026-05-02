@@ -159,28 +159,39 @@ function playSwatHit() {
 function playSwatMiss() {
   ensureAudio();
   const t = audioCtx.currentTime;
-  // Quick whoosh
-  const bufSize = audioCtx.sampleRate * 0.08;
+  // Hollow tap — short resonant thud like hitting empty wood
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(300, t);
+  osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.08);
+
+  // Tiny knock transient
+  const bufSize = Math.floor(audioCtx.sampleRate * 0.02);
   const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
   const data = noiseBuf.getChannelData(0);
   for (let i = 0; i < bufSize; i++) {
-    const env = Math.sin((i / bufSize) * Math.PI);
-    data[i] = (Math.random() * 2 - 1) * env * 0.5;
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufSize, 3);
   }
-  const src = audioCtx.createBufferSource();
-  const gain = audioCtx.createGain();
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(2000, t);
-  filter.frequency.exponentialRampToValueAtTime(500, t + 0.08);
-  filter.Q.value = 1;
-  src.buffer = noiseBuf;
-  gain.gain.setValueAtTime(0.12, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-  src.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
-  src.start(t);
+  const nSrc = audioCtx.createBufferSource();
+  const nGain = audioCtx.createGain();
+  const nFilter = audioCtx.createBiquadFilter();
+  nFilter.type = 'bandpass';
+  nFilter.frequency.value = 400;
+  nFilter.Q.value = 2;
+  nSrc.buffer = noiseBuf;
+  nGain.gain.setValueAtTime(0.12, t);
+  nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+  nSrc.connect(nFilter);
+  nFilter.connect(nGain);
+  nGain.connect(audioCtx.destination);
+  nSrc.start(t);
 }
 
 function playTickBite() {
@@ -198,6 +209,56 @@ function playTickBite() {
   gain.connect(audioCtx.destination);
   osc.start(t);
   osc.stop(t + 0.25);
+
+  // Funny deer bleat — wobbly "meeeh!"
+  playDeerBleat();
+}
+
+function playDeerBleat() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const duration = 0.25 + Math.random() * 0.15;
+
+  // Main voice: triangle wave with fast vibrato for that goat/deer wobble
+  const voice = audioCtx.createOscillator();
+  const vibrato = audioCtx.createOscillator();
+  const vibratoGain = audioCtx.createGain();
+  const voiceGain = audioCtx.createGain();
+
+  // Vibrato: fast wobble on the pitch
+  vibrato.type = 'sine';
+  vibrato.frequency.value = 18 + Math.random() * 12; // 18-30 Hz wobble
+  vibratoGain.gain.value = 60 + Math.random() * 40;  // wobble depth in Hz
+  vibrato.connect(vibratoGain);
+  vibratoGain.connect(voice.frequency);
+
+  // Voice: nasal bleat
+  voice.type = 'triangle';
+  const startPitch = 600 + Math.random() * 200;
+  voice.frequency.setValueAtTime(startPitch, t);
+  voice.frequency.linearRampToValueAtTime(startPitch * 1.15, t + duration * 0.15);
+  voice.frequency.linearRampToValueAtTime(startPitch * 0.7, t + duration);
+
+  // Envelope: quick attack, sustain, drop off
+  voiceGain.gain.setValueAtTime(0, t);
+  voiceGain.gain.linearRampToValueAtTime(0.13, t + 0.02);
+  voiceGain.gain.setValueAtTime(0.13, t + duration * 0.6);
+  voiceGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+  // Nasal formant filter
+  const formant = audioCtx.createBiquadFilter();
+  formant.type = 'bandpass';
+  formant.frequency.value = 900 + Math.random() * 300;
+  formant.Q.value = 3;
+
+  voice.connect(formant);
+  formant.connect(voiceGain);
+  voiceGain.connect(audioCtx.destination);
+
+  vibrato.start(t);
+  voice.start(t);
+  vibrato.stop(t + duration);
+  voice.stop(t + duration);
 }
 
 function playDeerDeath() {
