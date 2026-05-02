@@ -87,9 +87,9 @@ let ticks = [];
 let particles = [];
 let swatEffects = [];
 
-// Ania character image
+// Ania character image (cache-busted)
 const aniaImg = new Image();
-aniaImg.src = 'assets/ania.png';
+aniaImg.src = 'assets/ania.png?v=' + Date.now();
 
 // ============ RESPONSIVE SCALE ============
 // Returns a scale factor so game elements look right on any screen
