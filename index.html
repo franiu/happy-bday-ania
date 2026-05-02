@@ -38,15 +38,15 @@ canvas { display: block; cursor: none; }
   font-size: clamp(0.9em, 3vw, 1.2em);
   max-width: 500px; margin: 8px 20px; opacity: 0.9;
 }
-#startScreen .start-btn {
-  margin-top: 20px; padding: 16px 40px;
+#startScreen .start-btn, #startScreen .diff-btn {
+  margin-top: 0; padding: 16px 40px;
   font-size: clamp(1.1em, 4vw, 1.5em); border: none;
   border-radius: 50px; background: #e8491d; color: #fff; cursor: pointer;
   box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.2s;
   min-height: 54px; /* touch-friendly minimum */
 }
-#startScreen .start-btn:hover { transform: scale(1.08); }
-#startScreen .start-btn:active { transform: scale(0.96); }
+#startScreen .start-btn:hover, #startScreen .diff-btn:hover { transform: scale(1.08); }
+#startScreen .start-btn:active, #startScreen .diff-btn:active { transform: scale(0.96); }
 
 #gameOverScreen {
   background: rgba(30, 0, 0, 0.85); color: #ff4444; display: none;
@@ -103,8 +103,12 @@ canvas { display: block; cursor: none; }
 <div id="startScreen">
   <h1>🦌 Ania's Deer Guardian 🦌</h1>
   <p>Protect the deer from giant ticks! Tap or click the ticks before they reach the deer.</p>
-  <p>🎯 Swat ticks: +10 points<br>🦌 3 ticks on a deer = deer dies<br>💀 3 dead deer = game over<br>🏆 Reach 500 points to win!</p>
-  <button class="start-btn" id="startBtn">🛡️ Start Game</button>
+  <p>🎯 Swat ticks: +10 points<br>🦌 Ticks on a deer = deer dies<br>💀 3 dead deer = game over<br>🏆 Reach the target score to win!</p>
+  <div id="difficultyPicker" style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;justify-content:center;">
+    <button class="diff-btn" data-diff="easy" style="padding:14px 28px;font-size:clamp(1em,3.5vw,1.3em);border:none;border-radius:40px;cursor:pointer;min-height:50px;background:#4ade80;color:#1a3a1a;font-weight:bold;box-shadow:0 3px 10px rgba(0,0,0,0.2);transition:transform 0.15s;">Easy 🌿</button>
+    <button class="diff-btn" data-diff="normal" style="padding:14px 28px;font-size:clamp(1em,3.5vw,1.3em);border:none;border-radius:40px;cursor:pointer;min-height:50px;background:#e8491d;color:#fff;font-weight:bold;box-shadow:0 3px 10px rgba(0,0,0,0.2);transition:transform 0.15s;">Normal 🦌</button>
+    <button class="diff-btn" data-diff="hard" style="padding:14px 28px;font-size:clamp(1em,3.5vw,1.3em);border:none;border-radius:40px;cursor:pointer;min-height:50px;background:#ef4444;color:#fff;font-weight:bold;box-shadow:0 3px 10px rgba(0,0,0,0.2);transition:transform 0.15s;">Hard 🔥</button>
+  </div>
 </div>
 
 <div id="gameOverScreen">
@@ -120,7 +124,7 @@ canvas { display: block; cursor: none; }
 
 <div id="hud" style="display:none;">
   <div class="hud-left">
-    <span>🎯 Score: <span id="scoreDisplay">0</span> / 500</span>
+    <span>🎯 Score: <span id="scoreDisplay">0</span> / <span id="winScoreDisplay">500</span></span>
   </div>
   <div class="hud-right">
     <span>🦌 Deer lost: <span id="deerLost">0</span> / 3</span>

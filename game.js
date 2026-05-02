@@ -1,14 +1,70 @@
 // ============ GAME CONFIG ============
-const WIN_SCORE = 500;
 const TICK_POINTS = 10;
-const MAX_TICKS_ON_DEER = 3;
 const MAX_DEAD_DEER = 3;
-const DEER_COUNT = 5;
-const BASE_TICK_SPEED = 1.0;
-const BASE_SPAWN_INTERVAL = 2000; // ms
-const MIN_SPAWN_INTERVAL = 400;
-const SPEED_INCREASE_PER_50 = 0.15;
-const SPAWN_DECREASE_PER_50 = 120;
+
+// Difficulty presets
+const DIFFICULTY = {
+  easy: {
+    winScore: 300,
+    deerCount: 3,
+    maxTicksOnDeer: 4,
+    baseTickSpeed: 0.8,
+    baseSpawnInterval: 2200,
+    minSpawnInterval: 600,
+    speedIncreasePer50: 0.10,
+    spawnDecreasePer50: 100,
+    doubleSpawnThreshold: 4,   // difficulty level (score/50) to start double spawns
+    doubleSpawnChance: 0.2,
+    tripleSpawnThreshold: 999, // effectively never
+    tripleSpawnChance: 0,
+    deerMarginPortrait: 0.22,
+    deerMarginLandscape: 0.18,
+    hitBonusMobile: 30,
+    hitBonusDesktop: 18,
+    label: 'Easy 🌿',
+  },
+  normal: {
+    winScore: 500,
+    deerCount: 5,
+    maxTicksOnDeer: 3,
+    baseTickSpeed: 1.0,
+    baseSpawnInterval: 2000,
+    minSpawnInterval: 400,
+    speedIncreasePer50: 0.15,
+    spawnDecreasePer50: 120,
+    doubleSpawnThreshold: 3,
+    doubleSpawnChance: 0.3,
+    tripleSpawnThreshold: 6,
+    tripleSpawnChance: 0.3,
+    deerMarginPortrait: 0.18,
+    deerMarginLandscape: 0.15,
+    hitBonusMobile: 25,
+    hitBonusDesktop: 12,
+    label: 'Normal 🦌',
+  },
+  hard: {
+    winScore: 800,
+    deerCount: 6,
+    maxTicksOnDeer: 2,
+    baseTickSpeed: 1.3,
+    baseSpawnInterval: 1600,
+    minSpawnInterval: 350,
+    speedIncreasePer50: 0.22,
+    spawnDecreasePer50: 100,
+    doubleSpawnThreshold: 2,
+    doubleSpawnChance: 0.4,
+    tripleSpawnThreshold: 4,
+    tripleSpawnChance: 0.35,
+    deerMarginPortrait: 0.12,
+    deerMarginLandscape: 0.10,
+    hitBonusMobile: 18,
+    hitBonusDesktop: 8,
+    label: 'Hard 🔥',
+  }
+};
+
+let currentDifficulty = 'normal';
+function cfg() { return DIFFICULTY[currentDifficulty]; }
 
 // ============ GLOBALS ============
 const canvas = document.getElementById('gameCanvas');
@@ -321,13 +377,13 @@ function createDeer() {
   deer = [];
   const gs = getGameScale();
   const isPortrait = H > W;
-  const count = W < 500 ? 3 : DEER_COUNT;
+  const count = W < 500 ? Math.min(3, cfg().deerCount) : cfg().deerCount;
   const horizon = isPortrait ? 0.35 : 0.6;
   // Deer graze from just below the treeline to near the bottom
   const groundTop = H * (horizon + 0.05);
   const groundBottom = H * 0.92;
   // Pull deer inward so side deer aren't at the very edge
-  const marginX = isPortrait ? 0.18 : 0.15;
+  const marginX = isPortrait ? cfg().deerMarginPortrait : cfg().deerMarginLandscape;
   for (let i = 0; i < count; i++) {
     deer.push({
       x: W * marginX + (W * (1 - 2 * marginX)) * (i / (count - 1)) + (Math.random() - 0.5) * 20 * gs,
@@ -533,7 +589,7 @@ function spawnTick() {
   else { sx = Math.random() * W; sy = H + 30; }
 
   const difficultyLevel = Math.floor(score / 50);
-  const speed = BASE_TICK_SPEED + difficultyLevel * SPEED_INCREASE_PER_50;
+  const speed = cfg().baseTickSpeed + difficultyLevel * cfg().speedIncreasePer50;
   const gs = getGameScale();
 
   ticks.push({
@@ -568,7 +624,7 @@ function updateTicks(dt) {
       // Tick reached deer!
       t.targetDeer.ticksOnMe++;
       playTickBite();
-      if (t.targetDeer.ticksOnMe >= MAX_TICKS_ON_DEER) {
+      if (t.targetDeer.ticksOnMe >= cfg().maxTicksOnDeer) {
         t.targetDeer.alive = false;
         deadDeerCount++;
         document.getElementById('deerLost').textContent = deadDeerCount;
@@ -677,7 +733,7 @@ function drawTick(t, time) {
 function handleSwat(px, py) {
   if (!gameRunning || winTransitionActive) return;
   // Bigger hit area on mobile for fat fingers
-  const hitBonus = isMobile ? 25 : 12;
+  const hitBonus = isMobile ? cfg().hitBonusMobile : cfg().hitBonusDesktop;
   for (let i = ticks.length - 1; i >= 0; i--) {
     const t = ticks[i];
     const dx = t.x - px;
@@ -701,7 +757,7 @@ function handleSwat(px, py) {
       swatEffects.push({ x: t.x, y: t.y, life: 20, maxLife: 20 });
 
       // Check win
-      if (score >= WIN_SCORE) {
+      if (score >= cfg().winScore) {
         startWinTransition();
       }
       return; // Only swat one tick per tap
@@ -896,12 +952,12 @@ function startSpawning() {
   function scheduleNext() {
     if (!gameRunning) return;
     const difficultyLevel = Math.floor(score / 50);
-    const interval = Math.max(MIN_SPAWN_INTERVAL, BASE_SPAWN_INTERVAL - difficultyLevel * SPAWN_DECREASE_PER_50);
+    const interval = Math.max(cfg().minSpawnInterval, cfg().baseSpawnInterval - difficultyLevel * cfg().spawnDecreasePer50);
     spawnTimer = setTimeout(() => {
       spawnTick();
-      // Occasionally spawn 2 at higher difficulty
-      if (difficultyLevel >= 3 && Math.random() < 0.3) spawnTick();
-      if (difficultyLevel >= 6 && Math.random() < 0.3) spawnTick();
+      // Occasionally spawn extra ticks at higher difficulty
+      if (difficultyLevel >= cfg().doubleSpawnThreshold && Math.random() < cfg().doubleSpawnChance) spawnTick();
+      if (difficultyLevel >= cfg().tripleSpawnThreshold && Math.random() < cfg().tripleSpawnChance) spawnTick();
       scheduleNext();
     }, interval);
   }
@@ -916,7 +972,9 @@ function startGame() {
   ticks = [];
   particles = [];
   swatEffects = [];
+  winTransitionActive = false;
   document.getElementById('scoreDisplay').textContent = '0';
+  document.getElementById('winScoreDisplay').textContent = cfg().winScore;
   document.getElementById('deerLost').textContent = '0';
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('gameOverScreen').style.display = 'none';
@@ -1526,11 +1584,23 @@ function startWinAnimation() {
 }
 
 // ============ BUTTON HANDLERS ============
-document.getElementById('startBtn').addEventListener('click', startGame);
-document.getElementById('restartBtn').addEventListener('click', startGame);
-document.getElementById('winRestartBtn').addEventListener('click', () => {
+// Difficulty picker buttons
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentDifficulty = btn.dataset.diff;
+    startGame();
+  });
+});
+
+// Restart buttons go back to the start screen so player can pick difficulty
+function showStartScreen() {
   if (window._winAnimId) cancelAnimationFrame(window._winAnimId);
   const wc = document.getElementById('winCanvas');
-  wc.getContext('2d').clearRect(0, 0, wc.width, wc.height);
-  startGame();
-});
+  if (wc) wc.getContext('2d').clearRect(0, 0, wc.width, wc.height);
+  document.getElementById('gameOverScreen').style.display = 'none';
+  document.getElementById('winScreen').style.display = 'none';
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('startScreen').style.display = 'flex';
+}
+document.getElementById('restartBtn').addEventListener('click', showStartScreen);
+document.getElementById('winRestartBtn').addEventListener('click', showStartScreen);
