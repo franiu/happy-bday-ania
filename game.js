@@ -638,7 +638,7 @@ function updateTicks(dt) {
           });
         }
         if (deadDeerCount >= MAX_DEAD_DEER) {
-          endGame(false);
+          startLoseTransition();
         }
       }
       ticks.splice(i, 1);
@@ -731,7 +731,7 @@ function drawTick(t, time) {
 
 // ============ SWAT / INPUT ============
 function handleSwat(px, py) {
-  if (!gameRunning || winTransitionActive) return;
+  if (!gameRunning || winTransitionActive || loseTransitionActive) return;
   // Bigger hit area on mobile for fat fingers
   const hitBonus = isMobile ? cfg().hitBonusMobile : cfg().hitBonusDesktop;
   for (let i = ticks.length - 1; i >= 0; i--) {
@@ -973,6 +973,8 @@ function startGame() {
   particles = [];
   swatEffects = [];
   winTransitionActive = false;
+  loseTransitionActive = false;
+  invasionTicks = [];
   document.getElementById('scoreDisplay').textContent = '0';
   document.getElementById('winScoreDisplay').textContent = cfg().winScore;
   document.getElementById('deerLost').textContent = '0';
@@ -1204,6 +1206,196 @@ function winTransitionLoop(timestamp) {
   } else {
     winTransitionActive = false;
     endGame(true);
+  }
+}
+
+// ============ LOSE TRANSITION (tick invasion) ============
+let loseTransitionActive = false;
+let loseTransitionStart = 0;
+const LOSE_TRANSITION_DURATION = 2400; // ms
+let invasionTicks = [];
+
+function playInvasionSound() {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Ominous descending rumble
+  const notes = [220, 196, 165, 147, 131, 110, 98, 82];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    const start = t + i * 0.12;
+    osc.frequency.setValueAtTime(freq, start);
+    gain.gain.setValueAtTime(0.1, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + 0.3);
+  });
+  // Low sustained rumble
+  const rumbleStart = t + 0.3;
+  const rumble = audioCtx.createOscillator();
+  const rumbleGain = audioCtx.createGain();
+  rumble.type = 'sawtooth';
+  rumble.frequency.setValueAtTime(55, rumbleStart);
+  rumble.frequency.linearRampToValueAtTime(35, rumbleStart + 1.8);
+  rumbleGain.gain.setValueAtTime(0.08, rumbleStart);
+  rumbleGain.gain.linearRampToValueAtTime(0.12, rumbleStart + 0.8);
+  rumbleGain.gain.exponentialRampToValueAtTime(0.001, rumbleStart + 1.8);
+  rumble.connect(rumbleGain);
+  rumbleGain.connect(audioCtx.destination);
+  rumble.start(rumbleStart);
+  rumble.stop(rumbleStart + 1.8);
+}
+
+function startLoseTransition() {
+  if (spawnTimer) clearTimeout(spawnTimer);
+  loseTransitionActive = true;
+  loseTransitionStart = performance.now();
+  gameRunning = false;
+
+  playInvasionSound();
+
+  // Create a swarm of invasion ticks from all edges
+  invasionTicks = [];
+  const count = 40;
+  for (let i = 0; i < count; i++) {
+    const side = Math.floor(Math.random() * 4);
+    let sx, sy;
+    if (side === 0) { sx = -20 - Math.random() * 40; sy = Math.random() * H; }
+    else if (side === 1) { sx = W + 20 + Math.random() * 40; sy = Math.random() * H; }
+    else if (side === 2) { sx = Math.random() * W; sy = -20 - Math.random() * 40; }
+    else { sx = Math.random() * W; sy = H + 20 + Math.random() * 40; }
+
+    // Target: random point in the middle area of the screen
+    const tx = W * 0.2 + Math.random() * W * 0.6;
+    const ty = H * 0.2 + Math.random() * H * 0.6;
+
+    invasionTicks.push({
+      x: sx, y: sy, tx: tx, ty: ty,
+      speed: 1.5 + Math.random() * 2.5,
+      size: 16 + Math.random() * 14,
+      angle: 0,
+      legPhase: Math.random() * Math.PI * 2,
+      delay: Math.random() * 0.3 // stagger entry
+    });
+  }
+
+  requestAnimationFrame(loseTransitionLoop);
+}
+
+function loseTransitionLoop(timestamp) {
+  const elapsed = timestamp - loseTransitionStart;
+  const progress = Math.min(elapsed / LOSE_TRANSITION_DURATION, 1);
+
+  ctx.clearRect(0, 0, W, H);
+  drawForestBackground();
+
+  const gs = getGameScale();
+  const centerX = W / 2;
+  const centerY = H * 0.45;
+
+  // Draw deer (monuments stay)
+  for (const d of deer) {
+    drawDeer(d, timestamp);
+  }
+
+  // Freeze existing ticks in place, just draw them
+  for (const t of ticks) {
+    drawTick(t, timestamp);
+  }
+
+  // Update & draw particles
+  updateParticles();
+  drawParticles();
+
+  // --- Move and draw invasion ticks ---
+  for (const it of invasionTicks) {
+    if (progress < it.delay) continue; // staggered entry
+    const localProgress = Math.min((progress - it.delay) / (1 - it.delay), 1);
+
+    // Move toward target
+    const dx = it.tx - it.x;
+    const dy = it.ty - it.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 2) {
+      it.x += (dx / dist) * it.speed * 1.2;
+      it.y += (dy / dist) * it.speed * 1.2;
+    }
+    it.angle = Math.atan2(dy, dx);
+    it.legPhase += 0.18;
+
+    drawTick(it, timestamp);
+  }
+
+  // --- Ania shrinking in center, looking defeated ---
+  const aniaProgress = Math.min(progress / 0.4, 1);
+  const aniaScale = Math.max(0.3, 1.8 - aniaProgress * 1.5); // shrinks from 1.8 to 0.3
+  const aniaSize = Math.round(50 * gs * aniaScale);
+  const aniaAlpha = Math.max(0, 1 - progress * 0.8);
+
+  const aniaX = mouseX + (centerX - mouseX) * Math.min(aniaProgress * 2, 1);
+  const aniaY = (mouseY - 30 * gs) + (centerY - (mouseY - 30 * gs)) * Math.min(aniaProgress * 2, 1);
+
+  ctx.save();
+  ctx.globalAlpha = aniaAlpha;
+
+  // Red fading aura
+  const glowRadius = aniaSize * 0.9 + Math.sin(timestamp / 150) * 4;
+  const glowGrad = ctx.createRadialGradient(aniaX, aniaY, aniaSize * 0.2, aniaX, aniaY, glowRadius);
+  glowGrad.addColorStop(0, 'rgba(255, 50, 50, 0.35)');
+  glowGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(aniaX, aniaY, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ania portrait
+  if (aniaImg.complete && aniaImg.naturalWidth > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(aniaX, aniaY, aniaSize / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    const imgAspect = aniaImg.naturalWidth / aniaImg.naturalHeight;
+    let drawW, drawH;
+    if (imgAspect > 1) { drawH = aniaSize; drawW = aniaSize * imgAspect; }
+    else { drawW = aniaSize; drawH = aniaSize / imgAspect; }
+    ctx.drawImage(aniaImg, aniaX - drawW / 2, aniaY - drawH / 2, drawW, drawH);
+    ctx.restore();
+
+    // Red border
+    ctx.strokeStyle = `rgba(255, 50, 50, ${aniaAlpha})`;
+    ctx.lineWidth = 3 * gs;
+    ctx.beginPath();
+    ctx.arc(aniaX, aniaY, aniaSize / 2 + 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // --- Screen darkens progressively ---
+  const darkenAlpha = progress * 0.7;
+  ctx.fillStyle = `rgba(20, 0, 0, ${darkenAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // --- Red vignette ---
+  if (progress > 0.3) {
+    const vigAlpha = (progress - 0.3) * 0.4;
+    const vigGrad = ctx.createRadialGradient(centerX, centerY, Math.min(W, H) * 0.2, centerX, centerY, Math.max(W, H) * 0.7);
+    vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vigGrad.addColorStop(1, `rgba(80, 0, 0, ${vigAlpha})`);
+    ctx.fillStyle = vigGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // --- Continue or finish ---
+  if (progress < 1) {
+    requestAnimationFrame(loseTransitionLoop);
+  } else {
+    loseTransitionActive = false;
+    invasionTicks = [];
+    endGame(false);
   }
 }
 
